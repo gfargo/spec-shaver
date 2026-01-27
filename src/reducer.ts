@@ -12,6 +12,7 @@ export class OpenAPIReducer {
   private coreEntities: string[];
   private includeExamples: boolean;
   private maxDescriptionLength: number;
+  private methodFilter?: string[];
 
   constructor(options: ReducerOptions = {}) {
     this.maxActions = options.maxActions ?? 30;
@@ -30,6 +31,7 @@ export class OpenAPIReducer {
     ];
     this.includeExamples = options.includeExamples ?? false;
     this.maxDescriptionLength = options.maxDescriptionLength ?? 200;
+    this.methodFilter = options.methodFilter;
   }
 
   /**
@@ -89,6 +91,13 @@ export class OpenAPIReducer {
       for (const method in schema.paths[path]) {
         if (!['get', 'post', 'put', 'patch', 'delete'].includes(method.toLowerCase())) {
           continue;
+        }
+
+        // Apply method filter if specified
+        if (this.methodFilter && this.methodFilter.length > 0) {
+          if (!this.methodFilter.includes(method.toLowerCase())) {
+            continue;
+          }
         }
 
         const operation = schema.paths[path][method] as Operation;

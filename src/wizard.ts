@@ -234,7 +234,7 @@ export async function runWizard(
       {
         type: 'list',
         name: 'mode',
-        message: 'How would you like to select operations?',
+        message: 'How would you like to select operations? (Ctrl+C to exit)',
         choices: [
           {
             value: 'groups',
@@ -256,16 +256,10 @@ export async function runWizard(
         message: 'What would you like to do?',
         choices: [
           { value: 'continue', name: 'Continue' },
-          { value: 'cancel', name: 'Cancel' },
         ],
         when: (answers: any) => answers.mode !== undefined,
       },
     ]);
-
-    if (action === 'cancel') {
-      logger.warn('Cancelled.');
-      process.exit(0);
-    }
 
     state.mode = mode;
     step = 2;
@@ -299,15 +293,9 @@ export async function runWizard(
             choices: [
               { value: 'continue', name: 'Continue' },
               { value: 'back', name: 'Go back' },
-              { value: 'cancel', name: 'Cancel' },
             ],
           },
         ]);
-
-        if (action === 'cancel') {
-          logger.warn('Cancelled.');
-          process.exit(0);
-        }
 
         if (action === 'back') {
           step = 1;
@@ -340,15 +328,9 @@ export async function runWizard(
             choices: [
               { value: 'continue', name: 'Continue' },
               { value: 'back', name: 'Go back' },
-              { value: 'cancel', name: 'Cancel' },
             ],
           },
         ]);
-
-        if (action === 'cancel') {
-          logger.warn('Cancelled.');
-          process.exit(0);
-        }
 
         if (action === 'back') {
           step = 2;
@@ -394,15 +376,9 @@ export async function runWizard(
             choices: [
               { value: 'continue', name: 'Continue' },
               { value: 'back', name: 'Go back' },
-              { value: 'cancel', name: 'Cancel' },
             ],
           },
         ]);
-
-        if (action === 'cancel') {
-          logger.warn('Cancelled.');
-          process.exit(0);
-        }
 
         if (action === 'back') {
           step = 3;
@@ -417,11 +393,11 @@ export async function runWizard(
     // Individual mode - select operations one by one
     for (const group of groups) {
       logger.log(`\n${logger.formatOperation('', `--- ${group.tag} ---`, '')}`);
-      const { selected, action } = await inquirer.prompt([
+      const { selected } = await inquirer.prompt([
         {
           type: 'checkbox',
           name: 'selected',
-          message: `Select operations from ${group.tag}:`,
+          message: `Select operations from ${group.tag} (Ctrl+C to exit):`,
           choices: group.operations.map((op) => ({
             value: op,
             name: `${op.method.padEnd(7)} ${op.path}${op.operation.summary ? ` - ${op.operation.summary}` : ''}`,
@@ -429,22 +405,7 @@ export async function runWizard(
           })),
           pageSize: 15,
         },
-        {
-          type: 'list',
-          name: 'action',
-          message: 'What would you like to do?',
-          choices: [
-            { value: 'continue', name: 'Continue to next group' },
-            { value: 'cancel', name: 'Cancel' },
-          ],
-        },
       ]);
-
-      if (action === 'cancel') {
-        logger.warn('Cancelled.');
-        process.exit(0);
-      }
-
       selectedOperations.push(...selected);
     }
   }

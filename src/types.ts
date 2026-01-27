@@ -59,6 +59,7 @@ export interface ReducerOptions {
   coreEntities?: string[];
   includeExamples?: boolean;
   maxDescriptionLength?: number;
+  methodFilter?: string[]; // Filter to only include specific HTTP methods (e.g., ['get'])
 }
 
 export interface ReducerResult {

@@ -11,12 +11,20 @@ import { logger } from './logger';
 import { loadConfig, mergeConfig, createDefaultConfig } from './config';
 import { validateSchemaOrThrow } from './validator';
 
+/**
+ * Parse method filter from CLI options
+ */
+function parseMethodFilter(methods?: string): string[] | undefined {
+  if (!methods) return undefined;
+  return methods.split(',').map((m) => m.trim().toLowerCase());
+}
+
 const program = new Command();
 
 program
   .name('spec-shaver')
   .description('Intelligently reduce OpenAPI schemas to a specified number of operations and size')
-  .version('1.0.0')
+  .version('1.1.0')
   .option('-v, --verbose', 'Enable verbose logging')
   .option('-q, --quiet', 'Suppress all output except errors')
   .option('-c, --config <file>', 'Path to config file')
@@ -56,6 +64,7 @@ program
   .option('-o, --output <file>', 'Output file path', 'reduced_schema.json')
   .option('-a, --actions <number>', 'Maximum number of actions', '30')
   .option('-s, --size <bytes>', 'Maximum size in bytes', String(1024 * 1024))
+  .option('-m, --methods <methods>', 'Filter by HTTP methods (comma-separated, e.g., "get,post")')
   .option('--include-examples', 'Include examples in schema', false)
   .action(async (options) => {
     try {
@@ -98,12 +107,19 @@ program
       }
 
       logger.startSpinner(`Reducing schema to ${mergedOptions.actions} operations...`);
+      
+      const methodFilter = parseMethodFilter(mergedOptions.methods);
+      if (methodFilter) {
+        logger.verbose(`Filtering to methods: ${methodFilter.join(', ')}`);
+      }
+      
       const reducer = new OpenAPIReducer({
         maxActions: parseInt(mergedOptions.actions),
         maxSizeBytes: parseInt(mergedOptions.size),
         includeExamples: mergedOptions.includeExamples,
         coreEntities: mergedOptions.coreEntities,
         maxDescriptionLength: mergedOptions.maxDescriptionLength,
+        methodFilter,
       });
 
       const result = reducer.reduce(schema);
@@ -160,6 +176,7 @@ program
   .option('-o, --output <file>', 'Output file path', 'reduced_schema.json')
   .option('-a, --actions <number>', 'Maximum number of actions', '30')
   .option('-s, --size <bytes>', 'Maximum size in bytes', String(1024 * 1024))
+  .option('-m, --methods <methods>', 'Filter by HTTP methods (comma-separated, e.g., "get,post")')
   .option('--include-examples', 'Include examples in schema', false)
   .action(async (options) => {
     try {
@@ -194,12 +211,19 @@ program
       }
 
       logger.startSpinner(`Reducing schema to ${mergedOptions.actions} operations...`);
+      
+      const methodFilter = parseMethodFilter(mergedOptions.methods);
+      if (methodFilter) {
+        logger.verbose(`Filtering to methods: ${methodFilter.join(', ')}`);
+      }
+      
       const reducer = new OpenAPIReducer({
         maxActions: parseInt(mergedOptions.actions),
         maxSizeBytes: parseInt(mergedOptions.size),
         includeExamples: mergedOptions.includeExamples,
         coreEntities: mergedOptions.coreEntities,
         maxDescriptionLength: mergedOptions.maxDescriptionLength,
+        methodFilter,
       });
 
       const result = reducer.reduce(schema);

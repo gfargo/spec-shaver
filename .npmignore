@@ -1,0 +1,35 @@
+# Source files
+src/
+tsconfig.json
+
+# Examples
+examples/
+
+# Tests
+*.test.ts
+*.spec.ts
+__tests__/
+
+# Development
+.gitignore
+.eslintrc.json
+.prettierrc
+jest.config.js
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation source
+docs/
+
+# Kiro configuration
+.kiro/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+*.log
+.DS_Store

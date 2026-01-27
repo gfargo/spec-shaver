@@ -1,0 +1,62 @@
+{
+  "name": "spec-shaver",
+  "version": "1.0.0",
+  "description": "Intelligently reduce OpenAPI schemas to a specified number of operations and size limit",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "spec-shaver": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "pnpm build && node dist/cli.js",
+    "wizard": "pnpm build && node dist/cli.js wizard",
+    "wizard:dev": "node dist/cli.js wizard",
+    "prepublishOnly": "pnpm build",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "keywords": [
+    "openapi",
+    "api",
+    "schema",
+    "reducer",
+    "optimizer",
+    "spec"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gfargo/spec-shaver.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gfargo/spec-shaver/issues"
+  },
+  "homepage": "https://github.com/gfargo/spec-shaver#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "axios": "^1.6.5",
+    "commander": "^12.0.0",
+    "inquirer": "^8"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^8",
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

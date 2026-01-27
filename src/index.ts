@@ -1,10 +1,9 @@
 export { OpenAPIReducer } from './reducer';
 export { SchemaFetcher } from './fetcher';
-export {
-  runWizard,
-  extractOperationGroups,
-  buildSchemaFromSelections,
-} from './wizard';
+export { runWizard, extractOperationGroups, buildSchemaFromSelections } from './wizard';
+export { logger } from './logger';
+export { loadConfig, mergeConfig, createDefaultConfig } from './config';
+export { validateSchema, validateSchemaOrThrow } from './validator';
 export type {
   OpenAPISchema,
   Operation,
@@ -14,6 +13,9 @@ export type {
 } from './types';
 export type { FetchOptions } from './fetcher';
 export type { OperationInfo, OperationGroup } from './wizard';
+export type { ConfigFile } from './config';
+export type { ValidationResult } from './validator';
+export type { LogLevel } from './logger';
 
 // Convenience functions
 import { OpenAPIReducer } from './reducer';

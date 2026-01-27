@@ -7,13 +7,46 @@ import { OpenAPIReducer } from './reducer';
 import { SchemaFetcher } from './fetcher';
 import { OpenAPISchema } from './types';
 import { runWizard } from './wizard';
+import { logger } from './logger';
+import { loadConfig, mergeConfig, createDefaultConfig } from './config';
+import { validateSchemaOrThrow } from './validator';
 
 const program = new Command();
 
 program
   .name('spec-shaver')
   .description('Intelligently reduce OpenAPI schemas to a specified number of operations and size')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('-v, --verbose', 'Enable verbose logging')
+  .option('-q, --quiet', 'Suppress all output except errors')
+  .option('-c, --config <file>', 'Path to config file')
+  .hook('preAction', (thisCommand) => {
+    const opts = thisCommand.opts();
+    if (opts.quiet) {
+      logger.setLevel('quiet');
+    } else if (opts.verbose) {
+      logger.setLevel('verbose');
+    }
+  });
+
+program
+  .command('init')
+  .description('Create a default configuration file')
+  .option('-o, --output <file>', 'Config file path', '.spec-shaver.json')
+  .action((options) => {
+    try {
+      if (fs.existsSync(options.output)) {
+        logger.warn(`Config file already exists: ${options.output}`);
+        process.exit(1);
+      }
+
+      createDefaultConfig(options.output);
+      logger.success(`Created config file: ${options.output}`);
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
 
 program
   .command('fetch')
@@ -26,66 +59,96 @@ program
   .option('--include-examples', 'Include examples in schema', false)
   .action(async (options) => {
     try {
-      console.log(`Fetching schema from ${options.url}...`);
+      // Load and merge config
+      const globalOpts = program.opts();
+      const config = loadConfig(globalOpts.config);
+      const mergedOptions = mergeConfig(options, config);
+
+      logger.verbose('Starting fetch command...');
+      logger.startSpinner(`Fetching schema from ${mergedOptions.url}...`);
 
       // Parse headers from command line
       const headers: Record<string, string> = {};
-      if (options.header) {
-        for (const h of options.header) {
+      if (mergedOptions.header) {
+        for (const h of mergedOptions.header) {
           const colonIndex = h.indexOf(':');
           if (colonIndex > 0) {
             const key = h.substring(0, colonIndex).trim();
             const value = h.substring(colonIndex + 1).trim();
             headers[key] = value;
+            logger.verbose(`Added header: ${key}`);
           }
         }
       }
 
-      const schema = await SchemaFetcher.fetch({ url: options.url, headers });
+      const schema = await SchemaFetcher.fetch({ url: mergedOptions.url, headers });
+      logger.succeedSpinner('Schema fetched successfully');
 
       const originalSize = Buffer.byteLength(JSON.stringify(schema), 'utf8');
-      console.log(`Fetched schema: ${(originalSize / (1024 * 1024)).toFixed(2)} MB`);
+      logger.info(`Original schema size: ${logger.formatBytes(originalSize)}`);
 
-      console.log(`\nReducing schema to ${options.actions} actions...`);
+      // Validate original schema
+      logger.verbose('Validating original schema...');
+      try {
+        validateSchemaOrThrow(schema, 'Original schema');
+        logger.verbose('Original schema is valid');
+      } catch (error) {
+        logger.warn('Original schema validation failed, continuing anyway...');
+        logger.verbose(error instanceof Error ? error.message : String(error));
+      }
+
+      logger.startSpinner(`Reducing schema to ${mergedOptions.actions} operations...`);
       const reducer = new OpenAPIReducer({
-        maxActions: parseInt(options.actions),
-        maxSizeBytes: parseInt(options.size),
-        includeExamples: options.includeExamples,
+        maxActions: parseInt(mergedOptions.actions),
+        maxSizeBytes: parseInt(mergedOptions.size),
+        includeExamples: mergedOptions.includeExamples,
+        coreEntities: mergedOptions.coreEntities,
+        maxDescriptionLength: mergedOptions.maxDescriptionLength,
       });
 
       const result = reducer.reduce(schema);
+      logger.succeedSpinner('Schema reduced successfully');
+
+      // Validate reduced schema
+      logger.verbose('Validating reduced schema...');
+      try {
+        validateSchemaOrThrow(result.schema, 'Reduced schema');
+        logger.success('Reduced schema is valid');
+      } catch (error) {
+        logger.error('Reduced schema validation failed!');
+        logger.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
 
       // Save to file
-      fs.writeFileSync(options.output, JSON.stringify(result.schema, null, 2));
+      logger.verbose(`Writing to ${mergedOptions.output}...`);
+      fs.writeFileSync(mergedOptions.output, JSON.stringify(result.schema, null, 2));
 
-      console.log(`Original operation count: ${result.originalOperationCount}`);
-      console.log(`Reduced operation count: ${result.reducedOperationCount}`);
-      console.log(
-        `\nFinal schema size: ${(result.sizeBytes / (1024 * 1024)).toFixed(2)} MB (${result.sizeBytes.toLocaleString()} bytes)`
+      logger.info(`Original operations: ${result.originalOperationCount}`);
+      logger.info(`Reduced operations: ${result.reducedOperationCount}`);
+      logger.info(
+        `Final size: ${logger.formatBytes(result.sizeBytes)} (${result.sizeBytes.toLocaleString()} bytes)`
       );
 
-      if (result.sizeBytes > parseInt(options.size)) {
-        console.log('⚠️  Warning: Schema exceeds size limit!');
+      if (result.sizeBytes > parseInt(mergedOptions.size)) {
+        logger.warn('Schema exceeds size limit!');
       } else {
-        console.log('✓ Schema is within size limit!');
+        logger.success('Schema is within size limit');
       }
 
-      console.log(`\n✓ Reduced schema saved to: ${options.output}`);
+      logger.success(`Reduced schema saved to: ${mergedOptions.output}`);
 
       // Print operations summary
-      console.log('\n' + '='.repeat(80));
-      console.log('OPERATIONS INCLUDED IN REDUCED SCHEMA');
-      console.log('='.repeat(80));
+      logger.header('OPERATIONS INCLUDED IN REDUCED SCHEMA');
 
       for (const op of result.operations) {
-        const methodPadded = op.method.padEnd(7);
-        const pathPadded = op.path.padEnd(45);
-        console.log(`${methodPadded} ${pathPadded} ${op.summary || ''}`);
+        logger.log(logger.formatOperation(op.method, op.path, op.summary));
       }
 
-      console.log('='.repeat(80));
+      logger.separator();
     } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : error);
+      logger.failSpinner();
+      logger.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
   });
@@ -100,57 +163,89 @@ program
   .option('--include-examples', 'Include examples in schema', false)
   .action(async (options) => {
     try {
-      console.log(`Reading schema from ${options.input}...`);
-      
-      if (!fs.existsSync(options.input)) {
-        throw new Error(`Input file not found: ${options.input}`);
+      // Load and merge config
+      const globalOpts = program.opts();
+      const config = loadConfig(globalOpts.config);
+      const mergedOptions = mergeConfig(options, config);
+
+      logger.verbose('Starting reduce command...');
+      logger.startSpinner(`Reading schema from ${mergedOptions.input}...`);
+
+      if (!fs.existsSync(mergedOptions.input)) {
+        logger.failSpinner();
+        throw new Error(`Input file not found: ${mergedOptions.input}`);
       }
-      
-      const schemaContent = fs.readFileSync(options.input, 'utf8');
+
+      const schemaContent = fs.readFileSync(mergedOptions.input, 'utf8');
       const schema: OpenAPISchema = JSON.parse(schemaContent);
-      
+      logger.succeedSpinner('Schema loaded successfully');
+
       const originalSize = Buffer.byteLength(schemaContent, 'utf8');
-      console.log(`Original schema size: ${(originalSize / (1024 * 1024)).toFixed(2)} MB`);
-      
-      console.log(`\nReducing schema to ${options.actions} actions...`);
+      logger.info(`Original schema size: ${logger.formatBytes(originalSize)}`);
+
+      // Validate original schema
+      logger.verbose('Validating original schema...');
+      try {
+        validateSchemaOrThrow(schema, 'Original schema');
+        logger.verbose('Original schema is valid');
+      } catch (error) {
+        logger.warn('Original schema validation failed, continuing anyway...');
+        logger.verbose(error instanceof Error ? error.message : String(error));
+      }
+
+      logger.startSpinner(`Reducing schema to ${mergedOptions.actions} operations...`);
       const reducer = new OpenAPIReducer({
-        maxActions: parseInt(options.actions),
-        maxSizeBytes: parseInt(options.size),
-        includeExamples: options.includeExamples,
+        maxActions: parseInt(mergedOptions.actions),
+        maxSizeBytes: parseInt(mergedOptions.size),
+        includeExamples: mergedOptions.includeExamples,
+        coreEntities: mergedOptions.coreEntities,
+        maxDescriptionLength: mergedOptions.maxDescriptionLength,
       });
-      
+
       const result = reducer.reduce(schema);
-      
+      logger.succeedSpinner('Schema reduced successfully');
+
+      // Validate reduced schema
+      logger.verbose('Validating reduced schema...');
+      try {
+        validateSchemaOrThrow(result.schema, 'Reduced schema');
+        logger.success('Reduced schema is valid');
+      } catch (error) {
+        logger.error('Reduced schema validation failed!');
+        logger.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+
       // Save to file
-      const outputPath = path.resolve(options.output);
+      const outputPath = path.resolve(mergedOptions.output);
+      logger.verbose(`Writing to ${outputPath}...`);
       fs.writeFileSync(outputPath, JSON.stringify(result.schema, null, 2));
-      
-      console.log(`Original operation count: ${result.originalOperationCount}`);
-      console.log(`Reduced operation count: ${result.reducedOperationCount}`);
-      console.log(`\nFinal schema size: ${(result.sizeBytes / (1024 * 1024)).toFixed(2)} MB (${result.sizeBytes.toLocaleString()} bytes)`);
-      
-      if (result.sizeBytes > parseInt(options.size)) {
-        console.log('⚠️  Warning: Schema exceeds size limit!');
+
+      logger.info(`Original operations: ${result.originalOperationCount}`);
+      logger.info(`Reduced operations: ${result.reducedOperationCount}`);
+      logger.info(
+        `Final size: ${logger.formatBytes(result.sizeBytes)} (${result.sizeBytes.toLocaleString()} bytes)`
+      );
+
+      if (result.sizeBytes > parseInt(mergedOptions.size)) {
+        logger.warn('Schema exceeds size limit!');
       } else {
-        console.log('✓ Schema is within size limit!');
+        logger.success('Schema is within size limit');
       }
-      
-      console.log(`\n✓ Reduced schema saved to: ${outputPath}`);
-      
+
+      logger.success(`Reduced schema saved to: ${outputPath}`);
+
       // Print operations summary
-      console.log('\n' + '='.repeat(80));
-      console.log('OPERATIONS INCLUDED IN REDUCED SCHEMA');
-      console.log('='.repeat(80));
-      
+      logger.header('OPERATIONS INCLUDED IN REDUCED SCHEMA');
+
       for (const op of result.operations) {
-        const methodPadded = op.method.padEnd(7);
-        const pathPadded = op.path.padEnd(45);
-        console.log(`${methodPadded} ${pathPadded} ${op.summary || ''}`);
+        logger.log(logger.formatOperation(op.method, op.path, op.summary));
       }
-      
-      console.log('='.repeat(80));
+
+      logger.separator();
     } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : error);
+      logger.failSpinner();
+      logger.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
   });
@@ -165,65 +260,95 @@ program
   .option('--include-examples', 'Include examples in schema', false)
   .action(async (options) => {
     try {
+      // Load and merge config
+      const globalOpts = program.opts();
+      const config = loadConfig(globalOpts.config);
+      const mergedOptions = mergeConfig(options, config);
+
       let schema: OpenAPISchema;
 
-      if (options.url) {
-        console.log(`Fetching schema from ${options.url}...`);
+      if (mergedOptions.url) {
+        logger.startSpinner(`Fetching schema from ${mergedOptions.url}...`);
 
         const headers: Record<string, string> = {};
-        if (options.header) {
-          for (const h of options.header) {
+        if (mergedOptions.header) {
+          for (const h of mergedOptions.header) {
             const colonIndex = h.indexOf(':');
             if (colonIndex > 0) {
               const key = h.substring(0, colonIndex).trim();
               const value = h.substring(colonIndex + 1).trim();
               headers[key] = value;
+              logger.verbose(`Added header: ${key}`);
             }
           }
         }
 
-        schema = await SchemaFetcher.fetch({ url: options.url, headers });
-      } else if (options.input) {
-        console.log(`Reading schema from ${options.input}...`);
+        schema = await SchemaFetcher.fetch({ url: mergedOptions.url, headers });
+        logger.succeedSpinner('Schema fetched successfully');
+      } else if (mergedOptions.input) {
+        logger.startSpinner(`Reading schema from ${mergedOptions.input}...`);
 
-        if (!fs.existsSync(options.input)) {
-          throw new Error(`Input file not found: ${options.input}`);
+        if (!fs.existsSync(mergedOptions.input)) {
+          logger.failSpinner();
+          throw new Error(`Input file not found: ${mergedOptions.input}`);
         }
 
-        const schemaContent = fs.readFileSync(options.input, 'utf8');
+        const schemaContent = fs.readFileSync(mergedOptions.input, 'utf8');
         schema = JSON.parse(schemaContent);
+        logger.succeedSpinner('Schema loaded successfully');
       } else {
         throw new Error('Either --input or --url is required');
       }
 
       const originalSize = Buffer.byteLength(JSON.stringify(schema), 'utf8');
-      console.log(`Schema size: ${(originalSize / (1024 * 1024)).toFixed(2)} MB`);
+      logger.info(`Schema size: ${logger.formatBytes(originalSize)}`);
+
+      // Validate original schema
+      logger.verbose('Validating original schema...');
+      try {
+        validateSchemaOrThrow(schema, 'Original schema');
+        logger.verbose('Original schema is valid');
+      } catch (error) {
+        logger.warn('Original schema validation failed, continuing anyway...');
+        logger.verbose(error instanceof Error ? error.message : String(error));
+      }
 
       // Run the interactive wizard
       const result = await runWizard(schema, {
-        includeExamples: options.includeExamples,
+        includeExamples: mergedOptions.includeExamples,
+        coreEntities: mergedOptions.coreEntities,
+        maxDescriptionLength: mergedOptions.maxDescriptionLength,
       });
 
-      // Save to file
-      const outputPath = path.resolve(options.output);
-      fs.writeFileSync(outputPath, JSON.stringify(result.schema, null, 2));
-
-      console.log(`\n✓ Reduced schema saved to: ${outputPath}`);
-
-      // Print operations summary
-      console.log('\n' + '='.repeat(80));
-      console.log('OPERATIONS INCLUDED IN REDUCED SCHEMA');
-      console.log('='.repeat(80));
-
-      for (const op of result.operations) {
-        const methodPadded = op.method.padEnd(7);
-        const pathPadded = op.path.padEnd(45);
-        console.log(`${methodPadded} ${pathPadded} ${op.summary || ''}`);
+      // Validate reduced schema
+      logger.verbose('Validating reduced schema...');
+      try {
+        validateSchemaOrThrow(result.schema, 'Reduced schema');
+        logger.success('Reduced schema is valid');
+      } catch (error) {
+        logger.error('Reduced schema validation failed!');
+        logger.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
       }
 
-      console.log('='.repeat(80));
+      // Save to file
+      const outputPath = path.resolve(mergedOptions.output);
+      logger.verbose(`Writing to ${outputPath}...`);
+      fs.writeFileSync(outputPath, JSON.stringify(result.schema, null, 2));
+
+      logger.success(`Reduced schema saved to: ${outputPath}`);
+
+      // Print operations summary
+      logger.header('OPERATIONS INCLUDED IN REDUCED SCHEMA');
+
+      for (const op of result.operations) {
+        logger.log(logger.formatOperation(op.method, op.path, op.summary));
+      }
+
+      logger.separator();
     } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : error);
+      logger.failSpinner();
+      logger.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
   });

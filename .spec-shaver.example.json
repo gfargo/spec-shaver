@@ -1,0 +1,19 @@
+{
+  "maxActions": 30,
+  "maxSizeBytes": 1048576,
+  "coreEntities": [
+    "users",
+    "accounts",
+    "organizations",
+    "projects",
+    "items",
+    "resources",
+    "events",
+    "messages",
+    "files",
+    "settings"
+  ],
+  "includeExamples": false,
+  "maxDescriptionLength": 200,
+  "output": "reduced_schema.json"
+}

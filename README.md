@@ -5,11 +5,14 @@ A TypeScript/Node.js package to intelligently reduce OpenAPI schemas to a specif
 ## Features
 
 - ✨ **Smart Prioritization**: Intelligently selects the most important operations based on entity importance and operation type
-- 🧙 **Interactive Wizard**: Manually select operations by groups/tags or individually
+- 🧙 **Interactive Wizard**: Manually select operations by groups/tags or individually with undo support
 - 📦 **Size Optimization**: Automatically reduces schema size by removing examples and truncating descriptions
-- 🔧 **Flexible Configuration**: Customize which entities to prioritize and how many operations to include
-- 🎯 **Schema Validity**: Automatically includes all referenced schemas to maintain valid OpenAPI specification
-- 🚀 **CLI Tool**: Easy-to-use command-line interface
+- 🔧 **Flexible Configuration**: Customize via CLI flags or config file (`.spec-shaver.json`)
+- 🎯 **Schema Validity**: Automatically includes all referenced schemas and validates output
+- 🚀 **CLI Tool**: Easy-to-use command-line interface with color-coded output
+- 📊 **Progress Indicators**: Real-time feedback with spinners and progress messages
+- 🔍 **Verbose Mode**: Detailed logging for debugging and understanding operations
+- ✅ **Validation**: Ensures reduced schemas are valid OpenAPI specifications
 - 📚 **Programmatic API**: Use as a library in your own code
 
 ## Command Comparison
@@ -31,6 +34,33 @@ yarn add spec-shaver
 ```
 
 ## Quick Start
+
+### Configuration File (Recommended)
+
+Create a `.spec-shaver.json` config file in your project:
+
+```bash
+npx spec-shaver init
+```
+
+This creates a default config file you can customize:
+
+```json
+{
+  "maxActions": 30,
+  "maxSizeBytes": 1048576,
+  "coreEntities": ["users", "accounts", "organizations"],
+  "includeExamples": false,
+  "maxDescriptionLength": 200,
+  "output": "reduced_schema.json"
+}
+```
+
+Then run commands without repeating options:
+
+```bash
+npx spec-shaver reduce --input schema.json
+```
 
 ### Running Locally (Development)
 
@@ -97,6 +127,32 @@ const remoteResult = reducer.reduce(remoteSchema);
 
 ## CLI Usage
 
+### Global Options
+
+All commands support these global options:
+
+```bash
+-v, --verbose         Enable verbose logging (detailed operation info)
+-q, --quiet          Suppress all output except errors
+-c, --config <file>  Path to config file (default: .spec-shaver.json)
+```
+
+### Initialize Config File
+
+```bash
+spec-shaver init [options]
+
+Options:
+  -o, --output <file>  Config file path (default: ".spec-shaver.json")
+```
+
+Example:
+
+```bash
+spec-shaver init
+# Creates .spec-shaver.json with default settings
+```
+
 ### Reduce Local File
 
 ```bash
@@ -114,10 +170,17 @@ Options:
 Example:
 
 ```bash
-spec-shaver reduce \
-  --input original-schema.json \
-  --output reduced-schema.json \
-  --actions 20
+# Basic usage
+spec-shaver reduce --input original-schema.json --output reduced-schema.json
+
+# With verbose logging
+spec-shaver reduce -v --input schema.json --actions 20
+
+# Using config file
+spec-shaver reduce --input schema.json --config my-config.json
+
+# Quiet mode (only errors)
+spec-shaver reduce -q --input schema.json
 ```
 
 ### Fetch from URL
@@ -138,11 +201,17 @@ Options:
 Example:
 
 ```bash
+# Fetch from URL
+spec-shaver fetch --url https://api.example.com/openapi.json
+
+# With authentication
 spec-shaver fetch \
   --url https://api.example.com/openapi.json \
   --header "Authorization: Bearer YOUR_TOKEN" \
-  --output my-schema.json \
-  --actions 25
+  --output my-schema.json
+
+# With verbose logging
+spec-shaver fetch -v --url https://api.example.com/openapi.json --actions 25
 ```
 
 ### Interactive Wizard
@@ -167,10 +236,19 @@ The wizard offers three selection modes:
 2. **Select individual operations** - Pick specific endpoints one by one
 3. **Keep all operations** - Include everything (only optimize size)
 
+**New in v1.1:** Navigate back through wizard steps with the "Go back" option!
+
 Example:
 
 ```bash
+# Interactive selection from file
 spec-shaver wizard --input openapi.json --output reduced.json
+
+# Interactive selection from URL
+spec-shaver wizard --url https://api.example.com/openapi.json
+
+# With verbose logging to see what's happening
+spec-shaver wizard -v --input openapi.json
 ```
 
 ## Programmatic API
@@ -223,6 +301,34 @@ console.log('Size:', result.sizeBytes);
 ```
 
 ## Configuration Options
+
+### Config File
+
+Create a `.spec-shaver.json` file in your project root:
+
+```json
+{
+  "maxActions": 30,
+  "maxSizeBytes": 1048576,
+  "coreEntities": [
+    "users",
+    "accounts",
+    "organizations",
+    "projects",
+    "items",
+    "resources",
+    "events",
+    "messages",
+    "files",
+    "settings"
+  ],
+  "includeExamples": false,
+  "maxDescriptionLength": 200,
+  "output": "reduced_schema.json"
+}
+```
+
+CLI options override config file settings.
 
 ### `ReducerOptions`
 
@@ -383,7 +489,34 @@ pnpm lint
 - **[Publishing](docs/PUBLISHING.md)** - How to publish to NPM
 - **[Structure](docs/STRUCTURE.md)** - Package structure details
 - **[Project Summary](docs/PROJECT_SUMMARY.md)** - High-level overview
+- **[Roadmap](docs/ROADMAP.md)** - Planned features and improvements
 - **[Changelog](docs/CHANGELOG.md)** - Version history
+
+## What's New in v1.1
+
+### Color-Coded Output
+Operations are now displayed with color-coded HTTP methods for better readability:
+- GET (green), POST (blue), PUT/PATCH (yellow), DELETE (red)
+
+### Config File Support
+Create a `.spec-shaver.json` file to avoid repeating CLI options:
+```bash
+spec-shaver init  # Creates default config
+spec-shaver reduce --input schema.json  # Uses config automatically
+```
+
+### Verbose & Quiet Modes
+- `-v, --verbose` - See detailed operation logs
+- `-q, --quiet` - Suppress all output except errors
+
+### Schema Validation
+Automatically validates both input and output schemas to ensure they're valid OpenAPI specs.
+
+### Progress Indicators
+Real-time feedback with spinners during long operations like fetching and reducing schemas.
+
+### Wizard Improvements
+Navigate back through wizard steps with the "Go back" option - no more starting over!
 
 ## License
 

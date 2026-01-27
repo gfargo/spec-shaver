@@ -1,9 +1,9 @@
 import {
-  OpenAPISchema,
-  Operation,
-  PrioritizedOperation,
-  ReducerOptions,
-  ReducerResult,
+    OpenAPISchema,
+    Operation,
+    PrioritizedOperation,
+    ReducerOptions,
+    ReducerResult,
 } from './types';
 
 export class OpenAPIReducer {
@@ -225,7 +225,7 @@ export class OpenAPIReducer {
    * Optimize schema size by removing unnecessary data
    */
   private optimizeSize(schema: OpenAPISchema): OpenAPISchema {
-    let optimized = JSON.parse(JSON.stringify(schema)); // Deep clone
+    const optimized = JSON.parse(JSON.stringify(schema)); // Deep clone
 
     // Check size and optimize if needed
     let currentSize = this.calculateSize(optimized);

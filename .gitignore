@@ -33,6 +33,10 @@ coverage/
 .tmp/
 temp/
 
+# Config files (keep example)
+.spec-shaver.json
+.spec-shaver.config.json
+
 CLAUDE.md
 .kiro/
 docs/

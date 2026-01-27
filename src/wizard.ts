@@ -1,5 +1,6 @@
 import inquirer from 'inquirer';
 import { OpenAPISchema, Operation, ReducerOptions, ReducerResult } from './types';
+import { logger } from './logger';
 
 export interface OperationInfo {
   path: string;
@@ -12,6 +13,13 @@ export interface OperationInfo {
 export interface OperationGroup {
   tag: string;
   operations: OperationInfo[];
+}
+
+interface WizardState {
+  mode?: 'groups' | 'individual' | 'all';
+  selectedTags?: string[];
+  selectedOperations?: OperationInfo[];
+  refine?: boolean;
 }
 
 /**
@@ -76,15 +84,6 @@ function deriveTagFromPath(path: string): string {
     }
   }
   return parts[0].replace(/[{}]/g, '');
-}
-
-/**
- * Format bytes to human-readable size
- */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 /**
@@ -224,97 +223,201 @@ export async function runWizard(
   const groups = extractOperationGroups(schema);
   const totalOperations = groups.reduce((sum, g) => sum + g.operations.length, 0);
 
-  console.log(`\nFound ${totalOperations} operations in ${groups.length} groups:\n`);
+  logger.log(`\nFound ${totalOperations} operations in ${groups.length} groups:\n`);
+
+  const state: WizardState = {};
+  let step = 1;
 
   // Step 1: Select mode
-  const { mode } = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'mode',
-      message: 'How would you like to select operations?',
-      choices: [
-        {
-          value: 'groups',
-          name: 'Select by groups/tags (recommended) - Choose entire groups of related endpoints',
-        },
-        {
-          value: 'individual',
-          name: 'Select individual operations - Pick specific endpoints one by one',
-        },
-        {
-          value: 'all',
-          name: 'Keep all operations - Include everything (only optimize size)',
-        },
-      ],
-    },
-  ]);
-
-  let selectedOperations: OperationInfo[] = [];
-
-  if (mode === 'all') {
-    selectedOperations = groups.flatMap((g) => g.operations);
-  } else if (mode === 'groups') {
-    // Step 2a: Select groups
-    const { selectedTags } = await inquirer.prompt([
+  while (step === 1) {
+    const { mode, action } = await inquirer.prompt([
       {
-        type: 'checkbox',
-        name: 'selectedTags',
-        message: 'Select groups to include (space to toggle, enter to confirm):',
-        choices: groups.map((g) => ({
-          value: g.tag,
-          name: `${g.tag} (${g.operations.length} operations)`,
-          checked: false,
-        })),
-        pageSize: 15,
+        type: 'list',
+        name: 'mode',
+        message: 'How would you like to select operations?',
+        choices: [
+          {
+            value: 'groups',
+            name: 'Select by groups/tags (recommended) - Choose entire groups of related endpoints',
+          },
+          {
+            value: 'individual',
+            name: 'Select individual operations - Pick specific endpoints one by one',
+          },
+          {
+            value: 'all',
+            name: 'Keep all operations - Include everything (only optimize size)',
+          },
+        ],
+      },
+      {
+        type: 'list',
+        name: 'action',
+        message: 'What would you like to do?',
+        choices: [
+          { value: 'continue', name: 'Continue' },
+          { value: 'cancel', name: 'Cancel' },
+        ],
+        when: (answers: any) => answers.mode !== undefined,
       },
     ]);
 
-    if (selectedTags.length === 0) {
-      console.log('\nNo groups selected. Exiting.');
+    if (action === 'cancel') {
+      logger.warn('Cancelled.');
       process.exit(0);
     }
 
-    // Get all operations from selected groups
-    const selectedGroups = groups.filter((g) => selectedTags.includes(g.tag));
-    selectedOperations = selectedGroups.flatMap((g) => g.operations);
+    state.mode = mode;
+    step = 2;
+  }
 
-    // Step 3: Optionally refine within groups
-    const { refine } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'refine',
-        message: `Selected ${selectedOperations.length} operations. Would you like to refine individual operations within these groups?`,
-        default: false,
-      },
-    ]);
+  let selectedOperations: OperationInfo[] = [];
 
-    if (refine) {
-      const refinedOperations: OperationInfo[] = [];
-
-      for (const group of selectedGroups) {
-        console.log(`\n--- ${group.tag} ---`);
-        const { selected } = await inquirer.prompt([
+  if (state.mode === 'all') {
+    selectedOperations = groups.flatMap((g) => g.operations);
+  } else if (state.mode === 'groups') {
+    // Steps 2-4: Group selection with refinement
+    while (step >= 2 && step <= 4) {
+      if (step === 2) {
+        // Step 2: Select groups
+        const { selectedTags, action } = await inquirer.prompt([
           {
             type: 'checkbox',
-            name: 'selected',
-            message: `Select operations from ${group.tag}:`,
-            choices: group.operations.map((op) => ({
-              value: op,
-              name: `${op.method.padEnd(7)} ${op.path}${op.operation.summary ? ` - ${op.operation.summary}` : ''}`,
-              checked: true,
+            name: 'selectedTags',
+            message: 'Select groups to include (space to toggle, enter to confirm):',
+            choices: groups.map((g) => ({
+              value: g.tag,
+              name: `${g.tag} (${g.operations.length} operations)`,
+              checked: state.selectedTags?.includes(g.tag) || false,
             })),
             pageSize: 15,
           },
+          {
+            type: 'list',
+            name: 'action',
+            message: 'What would you like to do?',
+            choices: [
+              { value: 'continue', name: 'Continue' },
+              { value: 'back', name: 'Go back' },
+              { value: 'cancel', name: 'Cancel' },
+            ],
+          },
         ]);
-        refinedOperations.push(...selected);
+
+        if (action === 'cancel') {
+          logger.warn('Cancelled.');
+          process.exit(0);
+        }
+
+        if (action === 'back') {
+          step = 1;
+          continue;
+        }
+
+        if (selectedTags.length === 0) {
+          logger.warn('No groups selected. Please select at least one group or go back.');
+          continue;
+        }
+
+        state.selectedTags = selectedTags;
+        step = 3;
+      } else if (step === 3) {
+        // Step 3: Optionally refine within groups
+        const selectedGroups = groups.filter((g) => state.selectedTags!.includes(g.tag));
+        const operationCount = selectedGroups.flatMap((g) => g.operations).length;
+
+        const { refine, action } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'refine',
+            message: `Selected ${operationCount} operations. Would you like to refine individual operations within these groups?`,
+            default: state.refine ?? false,
+          },
+          {
+            type: 'list',
+            name: 'action',
+            message: 'What would you like to do?',
+            choices: [
+              { value: 'continue', name: 'Continue' },
+              { value: 'back', name: 'Go back' },
+              { value: 'cancel', name: 'Cancel' },
+            ],
+          },
+        ]);
+
+        if (action === 'cancel') {
+          logger.warn('Cancelled.');
+          process.exit(0);
+        }
+
+        if (action === 'back') {
+          step = 2;
+          continue;
+        }
+
+        state.refine = refine;
+
+        if (refine) {
+          step = 4;
+        } else {
+          selectedOperations = selectedGroups.flatMap((g) => g.operations);
+          step = 5;
+        }
+      } else if (step === 4) {
+        // Step 4: Refine individual operations
+        const refinedOperations: OperationInfo[] = [];
+        const selectedGroups = groups.filter((g) => state.selectedTags!.includes(g.tag));
+
+        for (const group of selectedGroups) {
+          logger.log(`\n${logger.formatOperation('', `--- ${group.tag} ---`, '')}`);
+          const { selected } = await inquirer.prompt([
+            {
+              type: 'checkbox',
+              name: 'selected',
+              message: `Select operations from ${group.tag}:`,
+              choices: group.operations.map((op) => ({
+                value: op,
+                name: `${op.method.padEnd(7)} ${op.path}${op.operation.summary ? ` - ${op.operation.summary}` : ''}`,
+                checked: true,
+              })),
+              pageSize: 15,
+            },
+          ]);
+          refinedOperations.push(...selected);
+        }
+
+        const { action } = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'action',
+            message: 'What would you like to do?',
+            choices: [
+              { value: 'continue', name: 'Continue' },
+              { value: 'back', name: 'Go back' },
+              { value: 'cancel', name: 'Cancel' },
+            ],
+          },
+        ]);
+
+        if (action === 'cancel') {
+          logger.warn('Cancelled.');
+          process.exit(0);
+        }
+
+        if (action === 'back') {
+          step = 3;
+          continue;
+        }
+
+        selectedOperations = refinedOperations;
+        step = 5;
       }
-      selectedOperations = refinedOperations;
     }
   } else {
-    // Step 2b: Select individual operations
+    // Individual mode - select operations one by one
     for (const group of groups) {
-      console.log(`\n--- ${group.tag} ---`);
-      const { selected } = await inquirer.prompt([
+      logger.log(`\n${logger.formatOperation('', `--- ${group.tag} ---`, '')}`);
+      const { selected, action } = await inquirer.prompt([
         {
           type: 'checkbox',
           name: 'selected',
@@ -326,26 +429,42 @@ export async function runWizard(
           })),
           pageSize: 15,
         },
+        {
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            { value: 'continue', name: 'Continue to next group' },
+            { value: 'cancel', name: 'Cancel' },
+          ],
+        },
       ]);
+
+      if (action === 'cancel') {
+        logger.warn('Cancelled.');
+        process.exit(0);
+      }
+
       selectedOperations.push(...selected);
     }
   }
 
   if (selectedOperations.length === 0) {
-    console.log('\nNo operations selected. Exiting.');
+    logger.warn('No operations selected. Exiting.');
     process.exit(0);
   }
 
   // Build the result
+  logger.verbose('Building reduced schema from selections...');
   const result = buildSchemaFromSelections(schema, selectedOperations, options);
 
   // Show summary
-  console.log('\n' + '='.repeat(60));
-  console.log('SELECTION SUMMARY');
-  console.log('='.repeat(60));
-  console.log(`Operations: ${result.originalOperationCount} → ${result.reducedOperationCount}`);
-  console.log(`Estimated size: ${formatBytes(result.sizeBytes)}`);
-  console.log('='.repeat(60));
+  logger.separator();
+  logger.log(logger.formatOperation('', 'SELECTION SUMMARY', ''));
+  logger.separator();
+  logger.log(`Operations: ${result.originalOperationCount} → ${result.reducedOperationCount}`);
+  logger.log(`Estimated size: ${logger.formatBytes(result.sizeBytes)}`);
+  logger.separator();
 
   // Confirm
   const { proceed } = await inquirer.prompt([
@@ -358,7 +477,7 @@ export async function runWizard(
   ]);
 
   if (!proceed) {
-    console.log('\nCancelled.');
+    logger.warn('Cancelled.');
     process.exit(0);
   }
 

@@ -129,11 +129,15 @@ export class OpenAPIReducer {
   /**
    * Calculate priority score for an operation
    */
-  private calculatePriority(path: string, method: string, operation: Operation): number {
+  private calculatePriority(
+    path: string,
+    pathLower: string,
+    methodLower: string,
+    operation: Operation
+  ): number {
     let priority = 0;
 
-    // Check if path contains core entities
-    const pathLower = path.toLowerCase();
+    // Check if path contains core entities (using pre-lowercased path)
     for (const entity of this.coreEntities) {
       if (pathLower.includes(`/${entity}`)) {
         priority += 100;
@@ -141,19 +145,11 @@ export class OpenAPIReducer {
       }
     }
 
-    // Prioritize by HTTP method
-    const methodLower = method.toLowerCase();
-    if (methodLower === 'get') priority += 50;
-    else if (methodLower === 'post') priority += 40;
-    else if (methodLower === 'patch' || methodLower === 'put') priority += 30;
-    else if (methodLower === 'delete') priority += 20;
+    // Prioritize by HTTP method (using lookup table)
+    priority += this.METHOD_PRIORITIES[methodLower] || 0;
 
     // Prioritize collection endpoints (e.g., /companies) over single resource (e.g., /companies/{id})
-    if (!path.includes('{')) {
-      priority += 15;
-    } else {
-      priority += 10;
-    }
+    priority += path.includes('{') ? 10 : 15;
 
     // Boost if operation has a clear summary
     if (operation.summary && operation.summary.length > 10) {
@@ -212,29 +208,36 @@ export class OpenAPIReducer {
   private findReferencedSchemas(schema: OpenAPISchema): Set<string> {
     const references = new Set<string>();
     const visited = new Set<string>();
+    const schemaRefRegex = /#\/components\/schemas\/(.+)/;
 
     const findRefs = (obj: any) => {
       if (!obj || typeof obj !== 'object') return;
 
       if (obj.$ref && typeof obj.$ref === 'string') {
-        const match = obj.$ref.match(/#\/components\/schemas\/(.+)/);
+        const match = obj.$ref.match(schemaRefRegex);
         if (match && match[1]) {
           const schemaName = match[1];
           if (!visited.has(schemaName)) {
             references.add(schemaName);
             visited.add(schemaName);
             // Recursively find references in this schema
-            if (schema.components?.schemas?.[schemaName]) {
-              findRefs(schema.components.schemas[schemaName]);
+            const referencedSchema = schema.components?.schemas?.[schemaName];
+            if (referencedSchema) {
+              findRefs(referencedSchema);
             }
           }
         }
+        return; // No need to traverse further if we found a $ref
       }
 
       if (Array.isArray(obj)) {
-        obj.forEach(item => findRefs(item));
+        for (const item of obj) {
+          findRefs(item);
+        }
       } else {
-        Object.values(obj).forEach(value => findRefs(value));
+        for (const value of Object.values(obj)) {
+          findRefs(value);
+        }
       }
     };
 
@@ -246,49 +249,50 @@ export class OpenAPIReducer {
    * Optimize schema size by removing unnecessary data
    */
   private optimizeSize(schema: OpenAPISchema): OpenAPISchema {
-    const optimized = JSON.parse(JSON.stringify(schema)); // Deep clone
-
-    // Check size and optimize if needed
-    let currentSize = this.calculateSize(optimized);
-
-    if (currentSize <= this.maxSizeBytes) {
-      return optimized;
+    // Avoid deep clone if we're already under size limit
+    const initialSize = this.calculateSize(schema);
+    if (initialSize <= this.maxSizeBytes) {
+      return schema;
     }
 
-    // Step 1: Remove examples from components
-    if (!this.includeExamples && optimized.components?.schemas) {
-      for (const schemaName in optimized.components.schemas) {
-        this.removeExamples(optimized.components.schemas[schemaName]);
-      }
-    }
+    // Deep clone only once
+    const optimized = this.deepClone(schema);
 
-    currentSize = this.calculateSize(optimized);
-    if (currentSize <= this.maxSizeBytes) {
-      return optimized;
-    }
-
-    // Step 2: Remove examples from paths
+    // Step 1: Remove examples if not needed
     if (!this.includeExamples) {
-      for (const path in optimized.paths) {
-        for (const method in optimized.paths[path]) {
-          this.removeExamples(optimized.paths[path][method]);
-        }
+      this.removeExamples(optimized);
+      
+      const sizeAfterExamples = this.calculateSize(optimized);
+      if (sizeAfterExamples <= this.maxSizeBytes) {
+        return optimized;
       }
     }
 
-    currentSize = this.calculateSize(optimized);
-    if (currentSize <= this.maxSizeBytes) {
-      return optimized;
-    }
-
-    // Step 3: Truncate descriptions
+    // Step 2: Truncate descriptions
     this.truncateDescriptions(optimized);
 
     return optimized;
   }
 
   /**
-   * Remove example fields from an object
+   * Deep clone an object (faster than JSON.parse(JSON.stringify()))
+   */
+  private deepClone(obj: any): any {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (obj instanceof Date) return new Date(obj.getTime());
+    if (obj instanceof Array) return obj.map(item => this.deepClone(item));
+    
+    const cloned: any = {};
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        cloned[key] = this.deepClone(obj[key]);
+      }
+    }
+    return cloned;
+  }
+
+  /**
+   * Remove example fields from an object (mutates in place)
    */
   private removeExamples(obj: any): void {
     if (!obj || typeof obj !== 'object') return;
@@ -297,14 +301,18 @@ export class OpenAPIReducer {
     delete obj.examples;
 
     if (Array.isArray(obj)) {
-      obj.forEach(item => this.removeExamples(item));
+      for (const item of obj) {
+        this.removeExamples(item);
+      }
     } else {
-      Object.values(obj).forEach(value => this.removeExamples(value));
+      for (const value of Object.values(obj)) {
+        this.removeExamples(value);
+      }
     }
   }
 
   /**
-   * Truncate long descriptions
+   * Truncate long descriptions (mutates in place)
    */
   private truncateDescriptions(obj: any): void {
     if (!obj || typeof obj !== 'object') return;
@@ -316,9 +324,13 @@ export class OpenAPIReducer {
     }
 
     if (Array.isArray(obj)) {
-      obj.forEach(item => this.truncateDescriptions(item));
+      for (const item of obj) {
+        this.truncateDescriptions(item);
+      }
     } else {
-      Object.values(obj).forEach(value => this.truncateDescriptions(value));
+      for (const value of Object.values(obj)) {
+        this.truncateDescriptions(value);
+      }
     }
   }
 

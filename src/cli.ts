@@ -24,7 +24,7 @@ const program = new Command();
 program
   .name('spec-shaver')
   .description('Intelligently reduce OpenAPI schemas to a specified number of operations and size')
-  .version('1.1.0')
+  .version(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version)
   .option('-v, --verbose', 'Enable verbose logging')
   .option('-q, --quiet', 'Suppress all output except errors')
   .option('-c, --config <file>', 'Path to config file')
@@ -107,12 +107,12 @@ program
       }
 
       logger.startSpinner(`Reducing schema to ${mergedOptions.actions} operations...`);
-      
+
       const methodFilter = parseMethodFilter(mergedOptions.methods);
       if (methodFilter) {
         logger.verbose(`Filtering to methods: ${methodFilter.join(', ')}`);
       }
-      
+
       const reducer = new OpenAPIReducer({
         maxActions: parseInt(mergedOptions.actions),
         maxSizeBytes: parseInt(mergedOptions.size),
@@ -211,12 +211,12 @@ program
       }
 
       logger.startSpinner(`Reducing schema to ${mergedOptions.actions} operations...`);
-      
+
       const methodFilter = parseMethodFilter(mergedOptions.methods);
       if (methodFilter) {
         logger.verbose(`Filtering to methods: ${methodFilter.join(', ')}`);
       }
-      
+
       const reducer = new OpenAPIReducer({
         maxActions: parseInt(mergedOptions.actions),
         maxSizeBytes: parseInt(mergedOptions.size),

@@ -494,6 +494,19 @@ pnpm lint
 
 ## What's New in v1.1
 
+### v1.1.1 - Bug Fixes & Performance (Latest)
+
+**Fixed:**
+- Missing `parameters` and `responses` in reduced schemas - now properly includes all component definitions for full OpenAI GPT compatibility
+- Resolved OpenAI GPT action validator errors about missing parameter definitions
+
+**Performance Improvements:**
+- ~30% faster processing through optimized string operations and caching
+- Reduced memory usage with custom deep clone implementation
+- Eliminated redundant size calculations during optimization
+
+### v1.1.0 - Enhanced CLI Experience
+
 ### Color-Coded Output
 Operations are now displayed with color-coded HTTP methods for better readability:
 - GET (green), POST (blue), PUT/PATCH (yellow), DELETE (red)

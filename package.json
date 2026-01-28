@@ -1,6 +1,6 @@
 {
   "name": "spec-shaver",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Intelligently reduce OpenAPI schemas to a specified number of operations and size limit",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

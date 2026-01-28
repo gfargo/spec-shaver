@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-01-28
+
+### Fixed
+
+- **Missing parameters and responses** - Fixed reducer to include `parameters` and `responses` sections from `components`, resolving OpenAI GPT action validator errors about missing parameter definitions
+- **Type definitions** - Added `parameters` and `responses` to `OpenAPISchema` interface in types
+
+### Performance
+
+- **Optimized string operations** - Cache `toLowerCase()` results to avoid redundant conversions
+- **Improved deep cloning** - Replaced `JSON.parse(JSON.stringify())` with custom `deepClone()` method for better performance
+- **Reduced size calculations** - Eliminated multiple redundant `calculateSize()` calls during optimization
+- **Better iteration patterns** - Replaced `.forEach()` with `for...of` loops and added early returns
+- **Lookup tables** - Created constant arrays and priority lookup tables for O(1) access
+- **Regex compilation** - Compile regex patterns once instead of on every match
+
+### Changed
+
+- Pre-lowercase method filters in constructor for better performance
+- Simplified conditional logic in priority calculation
+- Combined example removal into single pass through schema
+
 ## [1.1.0] - 2026-01-26
 
 ### Added

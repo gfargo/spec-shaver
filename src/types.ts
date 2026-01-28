@@ -21,6 +21,12 @@ export interface OpenAPISchema {
     securitySchemes?: {
       [name: string]: any;
     };
+    parameters?: {
+      [name: string]: any;
+    };
+    responses?: {
+      [name: string]: any;
+    };
   };
   security?: Array<{
     [name: string]: string[];

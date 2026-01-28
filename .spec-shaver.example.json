@@ -1,5 +1,5 @@
 {
-  "maxActions": 30,
+  "maxActions": 100,
   "maxSizeBytes": 1048576,
   "coreEntities": [
     "users",

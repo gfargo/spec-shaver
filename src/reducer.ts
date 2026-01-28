@@ -13,6 +13,14 @@ export class OpenAPIReducer {
   private includeExamples: boolean;
   private maxDescriptionLength: number;
   private methodFilter?: string[];
+  private readonly HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
+  private readonly METHOD_PRIORITIES: { [key: string]: number } = {
+    get: 50,
+    post: 40,
+    patch: 30,
+    put: 30,
+    delete: 20,
+  };
 
   constructor(options: ReducerOptions = {}) {
     this.maxActions = options.maxActions ?? 30;
@@ -31,7 +39,7 @@ export class OpenAPIReducer {
     ];
     this.includeExamples = options.includeExamples ?? false;
     this.maxDescriptionLength = options.maxDescriptionLength ?? 200;
-    this.methodFilter = options.methodFilter;
+    this.methodFilter = options.methodFilter?.map(m => m.toLowerCase());
   }
 
   /**
@@ -73,7 +81,7 @@ export class OpenAPIReducer {
     let count = 0;
     for (const path in schema.paths) {
       for (const method in schema.paths[path]) {
-        if (['get', 'post', 'put', 'patch', 'delete'].includes(method.toLowerCase())) {
+        if (this.HTTP_METHODS.includes(method.toLowerCase())) {
           count++;
         }
       }
@@ -88,20 +96,22 @@ export class OpenAPIReducer {
     const operations: PrioritizedOperation[] = [];
 
     for (const path in schema.paths) {
+      const pathLower = path.toLowerCase(); // Cache lowercase path
+      
       for (const method in schema.paths[path]) {
-        if (!['get', 'post', 'put', 'patch', 'delete'].includes(method.toLowerCase())) {
+        const methodLower = method.toLowerCase();
+        
+        if (!this.HTTP_METHODS.includes(methodLower)) {
           continue;
         }
 
         // Apply method filter if specified
-        if (this.methodFilter && this.methodFilter.length > 0) {
-          if (!this.methodFilter.includes(method.toLowerCase())) {
-            continue;
-          }
+        if (this.methodFilter && !this.methodFilter.includes(methodLower)) {
+          continue;
         }
 
         const operation = schema.paths[path][method] as Operation;
-        const priority = this.calculatePriority(path, method, operation);
+        const priority = this.calculatePriority(path, pathLower, methodLower, operation);
 
         operations.push({
           path,
@@ -168,6 +178,8 @@ export class OpenAPIReducer {
       components: {
         schemas: {},
         securitySchemes: schema.components?.securitySchemes,
+        parameters: schema.components?.parameters,
+        responses: schema.components?.responses,
       },
       security: schema.security,
       tags: schema.tags,

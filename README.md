@@ -163,7 +163,9 @@ Options:
   -o, --output <file>       Output file path (default: "reduced_schema.json")
   -a, --actions <number>    Maximum number of actions (default: 30)
   -s, --size <bytes>        Maximum size in bytes (default: 1048576)
+  -m, --methods <methods>   Filter by HTTP methods (comma-separated, e.g., "get,post")
   --include-examples        Include examples in schema (default: false)
+  --resolve-refs            Resolve all $ref references by inlining them (default: false)
   -h, --help                Display help
 ```
 
@@ -194,7 +196,9 @@ Options:
   -o, --output <file>       Output file path (default: "reduced_schema.json")
   -a, --actions <number>    Maximum number of actions (default: 30)
   -s, --size <bytes>        Maximum size in bytes (default: 1048576)
+  -m, --methods <methods>   Filter by HTTP methods (comma-separated, e.g., "get,post")
   --include-examples        Include examples in schema (default: false)
+  --resolve-refs            Resolve all $ref references by inlining them (default: false)
   -h, --help                Display help
 ```
 
@@ -227,6 +231,7 @@ Options:
   -H, --header <header...>  HTTP headers for URL fetch
   -o, --output <file>       Output file path (default: "reduced_schema.json")
   --include-examples        Include examples in schema (default: false)
+  --resolve-refs            Resolve all $ref references by inlining them (default: false)
   -h, --help                Display help
 ```
 
@@ -324,6 +329,7 @@ Create a `.spec-shaver.json` file in your project root:
   ],
   "includeExamples": false,
   "maxDescriptionLength": 200,
+  "resolveRefs": false,
   "output": "reduced_schema.json"
 }
 ```
@@ -339,6 +345,8 @@ CLI options override config file settings.
 | `coreEntities` | `string[]` | See below | Entities to prioritize |
 | `includeExamples` | `boolean` | `false` | Whether to include example fields |
 | `maxDescriptionLength` | `number` | `200` | Maximum length for descriptions |
+| `resolveRefs` | `boolean` | `false` | Resolve all $ref references by inlining them |
+| `methodFilter` | `string[]` | `undefined` | Filter operations by HTTP methods |
 
 ### Default Core Entities
 
@@ -494,7 +502,15 @@ pnpm lint
 
 ## What's New in v1.1
 
-### v1.1.1 - Bug Fixes & Performance (Latest)
+### v1.1.2 - Reference Resolution (Latest)
+
+**New Feature:**
+- `--resolve-refs` flag to inline all `$ref` references for better compatibility with OpenAI GPT and other tools
+- Available in all commands: `fetch`, `reduce`, and `wizard`
+- Handles circular references gracefully
+- Can be configured via `resolveRefs` option in config file
+
+### v1.1.1 - Bug Fixes & Performance
 
 **Fixed:**
 - Missing `parameters` and `responses` in reduced schemas - now properly includes all component definitions for full OpenAI GPT compatibility

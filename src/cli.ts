@@ -66,6 +66,7 @@ program
   .option('-s, --size <bytes>', 'Maximum size in bytes', String(1024 * 1024))
   .option('-m, --methods <methods>', 'Filter by HTTP methods (comma-separated, e.g., "get,post")')
   .option('--include-examples', 'Include examples in schema', false)
+  .option('--resolve-refs', 'Resolve all $ref references by inlining them', false)
   .action(async (options) => {
     try {
       // Load and merge config
@@ -113,6 +114,10 @@ program
         logger.verbose(`Filtering to methods: ${methodFilter.join(', ')}`);
       }
 
+      if (mergedOptions.resolveRefs) {
+        logger.verbose('Reference resolution enabled - will inline all $ref references');
+      }
+
       const reducer = new OpenAPIReducer({
         maxActions: parseInt(mergedOptions.actions),
         maxSizeBytes: parseInt(mergedOptions.size),
@@ -120,6 +125,7 @@ program
         coreEntities: mergedOptions.coreEntities,
         maxDescriptionLength: mergedOptions.maxDescriptionLength,
         methodFilter,
+        resolveRefs: mergedOptions.resolveRefs,
       });
 
       const result = reducer.reduce(schema);
@@ -178,6 +184,7 @@ program
   .option('-s, --size <bytes>', 'Maximum size in bytes', String(1024 * 1024))
   .option('-m, --methods <methods>', 'Filter by HTTP methods (comma-separated, e.g., "get,post")')
   .option('--include-examples', 'Include examples in schema', false)
+  .option('--resolve-refs', 'Resolve all $ref references by inlining them', false)
   .action(async (options) => {
     try {
       // Load and merge config
@@ -217,6 +224,10 @@ program
         logger.verbose(`Filtering to methods: ${methodFilter.join(', ')}`);
       }
 
+      if (mergedOptions.resolveRefs) {
+        logger.verbose('Reference resolution enabled - will inline all $ref references');
+      }
+
       const reducer = new OpenAPIReducer({
         maxActions: parseInt(mergedOptions.actions),
         maxSizeBytes: parseInt(mergedOptions.size),
@@ -224,6 +235,7 @@ program
         coreEntities: mergedOptions.coreEntities,
         maxDescriptionLength: mergedOptions.maxDescriptionLength,
         methodFilter,
+        resolveRefs: mergedOptions.resolveRefs,
       });
 
       const result = reducer.reduce(schema);
@@ -282,6 +294,7 @@ program
   .option('-H, --header <header...>', 'HTTP headers for URL fetch (format: "Key: Value")')
   .option('-o, --output <file>', 'Output file path', 'reduced_schema.json')
   .option('--include-examples', 'Include examples in schema', false)
+  .option('--resolve-refs', 'Resolve all $ref references by inlining them', false)
   .action(async (options) => {
     try {
       // Load and merge config

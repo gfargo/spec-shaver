@@ -15,5 +15,6 @@
   ],
   "includeExamples": false,
   "maxDescriptionLength": 200,
+  "resolveRefs": false,
   "output": "reduced_schema.json"
 }

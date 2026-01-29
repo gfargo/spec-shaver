@@ -66,6 +66,7 @@ export interface ReducerOptions {
   includeExamples?: boolean;
   maxDescriptionLength?: number;
   methodFilter?: string[]; // Filter to only include specific HTTP methods (e.g., ['get'])
+  resolveRefs?: boolean; // Inline all $ref references for better compatibility
 }
 
 export interface ReducerResult {

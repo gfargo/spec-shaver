@@ -13,6 +13,7 @@ export class OpenAPIReducer {
   private includeExamples: boolean;
   private maxDescriptionLength: number;
   private methodFilter?: string[];
+  private resolveRefs: boolean;
   private readonly HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
   private readonly METHOD_PRIORITIES: { [key: string]: number } = {
     get: 50,
@@ -40,6 +41,7 @@ export class OpenAPIReducer {
     this.includeExamples = options.includeExamples ?? false;
     this.maxDescriptionLength = options.maxDescriptionLength ?? 200;
     this.methodFilter = options.methodFilter?.map(m => m.toLowerCase());
+    this.resolveRefs = options.resolveRefs ?? false;
   }
 
   /**
@@ -55,7 +57,12 @@ export class OpenAPIReducer {
     // Step 2: Build reduced schema with selected operations
     let reducedSchema = this.buildReducedSchema(schema, selectedOps);
 
-    // Step 3: Optimize size if needed
+    // Step 3: Resolve $ref references if requested
+    if (this.resolveRefs) {
+      reducedSchema = this.resolveReferences(reducedSchema);
+    }
+
+    // Step 4: Optimize size if needed
     reducedSchema = this.optimizeSize(reducedSchema);
 
     const sizeBytes = this.calculateSize(reducedSchema);
@@ -339,5 +346,111 @@ export class OpenAPIReducer {
    */
   private calculateSize(schema: OpenAPISchema): number {
     return Buffer.byteLength(JSON.stringify(schema), 'utf8');
+  }
+
+  /**
+   * Resolve all $ref references by inlining them
+   * This improves compatibility with tools that don't handle references well (e.g., OpenAI GPT)
+   */
+  public resolveReferences(schema: OpenAPISchema): OpenAPISchema {
+    const resolved = this.deepClone(schema);
+    
+    // Create a map of all component schemas for quick lookup
+    const componentSchemas = resolved.components?.schemas || {};
+    const componentParameters = resolved.components?.parameters || {};
+    const componentResponses = resolved.components?.responses || {};
+    
+    // Recursively resolve all references
+    const resolveRefs = (obj: any, visited: Set<string> = new Set()): any => {
+      if (!obj || typeof obj !== 'object') return obj;
+
+      // Handle $ref
+      if (obj.$ref && typeof obj.$ref === 'string') {
+        const refPath = obj.$ref;
+        
+        // Prevent circular references
+        if (visited.has(refPath)) {
+          return { type: 'object', description: `Circular reference to ${refPath}` };
+        }
+        
+        visited.add(refPath);
+        
+        // Parse the reference
+        const match = refPath.match(/#\/components\/(schemas|parameters|responses)\/(.+)/);
+        if (match) {
+          const [, componentType, componentName] = match;
+          let referencedComponent;
+          
+          if (componentType === 'schemas') {
+            referencedComponent = componentSchemas[componentName];
+          } else if (componentType === 'parameters') {
+            referencedComponent = componentParameters[componentName];
+          } else if (componentType === 'responses') {
+            referencedComponent = componentResponses[componentName];
+          }
+          
+          if (referencedComponent) {
+            // Clone and resolve nested references with the same visited set
+            const cloned = this.deepClone(referencedComponent);
+            return resolveRefs(cloned, visited);
+          }
+        }
+        
+        // If we can't resolve, return the original reference
+        return obj;
+      }
+
+      // Handle arrays
+      if (Array.isArray(obj)) {
+        return obj.map(item => resolveRefs(item, visited));
+      }
+
+      // Handle objects
+      const result: any = {};
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          result[key] = resolveRefs(obj[key], visited);
+        }
+      }
+      return result;
+    };
+
+    // Resolve references in paths (but skip parameter refs)
+    if (resolved.paths) {
+      const resolvedPaths: any = {};
+      for (const path in resolved.paths) {
+        resolvedPaths[path] = {};
+        for (const method in resolved.paths[path]) {
+          const operation = resolved.paths[path][method];
+          resolvedPaths[path][method] = {
+            ...operation,
+            // Keep parameters as-is (they should remain as refs)
+            parameters: operation.parameters,
+            // Resolve refs in responses
+            responses: operation.responses ? resolveRefs(operation.responses, new Set()) : operation.responses,
+            // Resolve refs in requestBody
+            requestBody: operation.requestBody ? resolveRefs(operation.requestBody, new Set()) : operation.requestBody,
+          };
+        }
+      }
+      resolved.paths = resolvedPaths;
+    }
+
+    // Also resolve references in components schemas
+    if (resolved.components?.schemas) {
+      const resolvedSchemas: any = {};
+      for (const schemaName in resolved.components.schemas) {
+        resolvedSchemas[schemaName] = resolveRefs(resolved.components.schemas[schemaName], new Set());
+      }
+      resolved.components.schemas = resolvedSchemas;
+    }
+
+    // After resolving all references, we can optionally remove the components section
+    // to create a fully self-contained schema (uncomment if desired)
+    // delete resolved.components?.schemas;
+    // delete resolved.components?.parameters;
+    // delete resolved.components?.responses;
+
+    return resolved;
   }
 }

@@ -1,6 +1,7 @@
 import inquirer from 'inquirer';
 import { OpenAPISchema, Operation, ReducerOptions, ReducerResult } from './types';
 import { logger } from './logger';
+import { OpenAPIReducer } from './reducer';
 
 export interface OperationInfo {
   path: string;
@@ -105,6 +106,8 @@ export function buildSchemaFromSelections(
     components: {
       schemas: {},
       securitySchemes: originalSchema.components?.securitySchemes,
+      parameters: originalSchema.components?.parameters,
+      responses: originalSchema.components?.responses,
     },
     security: originalSchema.security,
     tags: originalSchema.tags,
@@ -134,6 +137,14 @@ export function buildSchemaFromSelections(
     removeExamples(reducedSchema);
   }
 
+  // Resolve references if requested
+  let finalSchema = reducedSchema;
+  if (options.resolveRefs) {
+    logger.verbose('Resolving $ref references...');
+    const reducer = new OpenAPIReducer(options);
+    finalSchema = reducer.resolveReferences(reducedSchema);
+  }
+
   // Calculate original operation count
   let originalOperationCount = 0;
   for (const path in originalSchema.paths) {
@@ -144,10 +155,10 @@ export function buildSchemaFromSelections(
     }
   }
 
-  const sizeBytes = Buffer.byteLength(JSON.stringify(reducedSchema), 'utf8');
+  const sizeBytes = Buffer.byteLength(JSON.stringify(finalSchema), 'utf8');
 
   return {
-    schema: reducedSchema,
+    schema: finalSchema,
     originalOperationCount,
     reducedOperationCount: selectedOperations.length,
     sizeBytes,
